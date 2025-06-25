@@ -18,7 +18,7 @@ from excel_utils import get_referenced_cell_values, parse_excel_address
 
 from worksheet_ui import setup_ui, _set_placeholder, _on_focus_in, _on_mouse_click, _on_focus_out
 from worksheet_refresh import refresh_data, reconnect_to_excel, activate_excel_window
-from worksheet_tree import apply_filter, sort_column, on_select, on_double_click
+from worksheet_tree import apply_filter, sort_column, on_select, on_double_click, go_to_reference
 from worksheet_export import export_formulas_to_excel, import_and_update_formulas
 from worksheet_excel_util import _find_matching_sheet, open_external_file
 
@@ -92,6 +92,9 @@ class WorksheetPane:
 
     def on_double_click(self, event):
         return on_double_click(self, event)
+
+    def go_to_reference(self, workbook_path, sheet_name, cell_address):
+        return go_to_reference(self, workbook_path, sheet_name, cell_address)
 
     def export_formulas_to_excel(self):
         return export_formulas_to_excel(self)

@@ -94,6 +94,55 @@ def sort_column(self, col_id):
     current_text = self.result_tree.heading(col_id, "text").split(' ')[0]
     self.result_tree.heading(col_id, text=current_text + current_direction)
 
+def go_to_reference(self, workbook_path, sheet_name, cell_address):
+    try:
+        try:
+            self.xl = win32com.client.GetActiveObject("Excel.Application")
+        except Exception:
+            try:
+                self.xl = win32com.client.Dispatch("Excel.Application")
+                self.xl.Visible = True
+            except Exception as e:
+                messagebox.showerror("Excel Error", f"Could not start or connect to Excel.\nError: {e}")
+                return
+
+        target_workbook = None
+        normalized_workbook_path = os.path.normpath(workbook_path) if workbook_path else None
+
+        if normalized_workbook_path:
+            for wb in self.xl.Workbooks:
+                if os.path.normpath(wb.FullName) == normalized_workbook_path:
+                    target_workbook = wb
+                    break
+            if not target_workbook:
+                if os.path.exists(normalized_workbook_path):
+                    target_workbook = self.xl.Workbooks.Open(normalized_workbook_path)
+                else:
+                    messagebox.showerror("File Not Found", f"The workbook path was not found:\n{normalized_workbook_path}")
+                    return
+        else:
+            target_workbook = self.workbook
+
+        if not target_workbook:
+            messagebox.showerror("Error", "Could not access the target workbook.")
+            return
+
+        target_worksheet = None
+        try:
+            target_worksheet = target_workbook.Worksheets(sheet_name)
+        except Exception:
+            messagebox.showerror("Worksheet Not Found", f"Could not find worksheet '{sheet_name}' in workbook '{os.path.basename(target_workbook.FullName)}'.")
+            return
+
+        self.activate_excel_window()
+        target_workbook.Activate()
+        target_worksheet.Activate()
+        target_worksheet.Range(cell_address).Select()
+
+    except Exception as e:
+        messagebox.showerror("Navigation Error", f"Could not navigate to cell '{cell_address}'.\nError: {e}")
+
+
 def on_select(self, event):
     selected_item = self.result_tree.selection()
     if not selected_item:
@@ -128,24 +177,52 @@ def on_select(self, event):
         if referenced_values:
             self.detail_text.insert('end', "Referenced Cell Values (Non-Range):\n", "label")
             for ref_addr, ref_val in referenced_values.items():
-                if '|' in ref_addr and '[' in ref_addr and ']' in ref_addr:
-                    full_path, display_ref = ref_addr.split('|', 1)
-                    self.detail_text.insert('end', f"  {display_ref}: {ref_val}  ", "referenced_value")
-                    def build_handler(fp):
-                        def handler():
-                            self.open_external_file(fp)
-                        return handler
-                    btn = tk.Button(self.detail_text, text="Open File", font=("Arial", 7), cursor="hand2", command=build_handler(full_path))
-                    self.detail_text.window_create('end', window=btn)
-                    self.detail_text.insert('end', "\n")
-                else:
-                    self.detail_text.insert('end', f"  {ref_addr}: {ref_val}\n", "referenced_value")
+                display_text = ref_addr
+                if '|' in ref_addr:
+                    _, display_text = ref_addr.split('|', 1)
+
+                self.detail_text.insert('end', f"  {display_text}: {ref_val}  ", "referenced_value")
+
+                workbook_path = None
+                sheet_name = None
+                cell_address_to_go = None
+                
+                try:
+                    if '|' in ref_addr:
+                        full_path, display_ref = ref_addr.split('|', 1)
+                        workbook_path = full_path
+                        
+                        if ']' in display_ref and '!' in display_ref:
+                            sheet_and_cell = display_ref.split(']', 1)[1]
+                            parts = sheet_and_cell.rsplit('!', 1)
+                            sheet_name = parts[0].strip("'")
+                            cell_address_to_go = parts[1]
+                    else:
+                        workbook_path = self.workbook.FullName
+                        if '!' in ref_addr:
+                            parts = ref_addr.rsplit('!', 1)
+                            sheet_name = parts[0]
+                            cell_address_to_go = parts[1]
+
+                    if workbook_path and sheet_name and cell_address_to_go:
+                        def build_handler(wp, sn, ca):
+                            def handler():
+                                self.go_to_reference(wp, sn, ca)
+                            return handler
+                        
+                        btn = tk.Button(self.detail_text, text="Go to Reference", font=("Arial", 7), cursor="hand2", command=build_handler(workbook_path, sheet_name, cell_address_to_go))
+                        self.detail_text.window_create('end', window=btn)
+
+                except Exception as e:
+                    print(f"INFO: Could not create navigation button for '{ref_addr}': {e}")
+
+                self.detail_text.insert('end', "\n")
         else:
             self.detail_text.insert('end', "Referenced Cell Values (Non-Range):\n", "label")
             self.detail_text.insert('end', "  No individual cell references found or accessible.\n", "info_text")
     else:
         self.detail_text.insert('end', "Excel connection not active to retrieve referenced values.\n", "info_text")
-
+        
 def on_double_click(self, event):
     selected_item = self.result_tree.selection()
     if not selected_item:
